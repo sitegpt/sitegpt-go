@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -217,5 +218,70 @@ func TestCustomClientKeepsAuthStripping(t *testing.T) {
 	}
 	if sawAuth != "" {
 		t.Errorf("custom client leaked token across origins: %q", sawAuth)
+	}
+}
+
+func TestAnalyticsSendsRangeAndDecodesSeries(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/analytics" {
+			t.Errorf("path = %q", got)
+		}
+		if got := r.URL.Query().Get("startDay"); got != "2026-08-01" {
+			t.Errorf("startDay = %q", got)
+		}
+		if got := r.URL.Query().Get("endDay"); got != "2026-08-19" {
+			t.Errorf("endDay = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"analytics": map[string]any{
+					"startDay":        "2026-08-01",
+					"endDay":          "2026-08-19",
+					"insightsEnabled": false,
+					"totals":          map[string]any{"widgetOpens": float64(42)},
+				},
+			},
+		})
+	})
+	query := url.Values{}
+	query.Set("startDay", "2026-08-01")
+	query.Set("endDay", "2026-08-19")
+	result, err := client.Chatbots.Analytics(context.Background(), "bot-1", query)
+	if err != nil {
+		t.Fatalf("Analytics: %v", err)
+	}
+	data, ok := result["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data not decoded: %+v", result)
+	}
+	analytics, ok := data["analytics"].(map[string]any)
+	if !ok {
+		t.Fatalf("analytics not decoded: %+v", data)
+	}
+	totals, ok := analytics["totals"].(map[string]any)
+	if !ok || totals["widgetOpens"] != float64(42) {
+		t.Errorf("totals not decoded: %+v", analytics["totals"])
+	}
+}
+
+func TestAnalyticsLockedSurfacesTheCode(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": false,
+			"error": map[string]any{
+				"code":    "ANALYTICS_LOCKED",
+				"message": "Analytics is not enabled for this account",
+			},
+		})
+	})
+	_, err := client.Chatbots.Analytics(context.Background(), "bot-1", nil)
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("error type = %T", err)
+	}
+	if apiErr.Status != 403 || apiErr.Code != "ANALYTICS_LOCKED" {
+		t.Errorf("unexpected error: %+v", apiErr)
 	}
 }

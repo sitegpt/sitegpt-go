@@ -49,6 +49,17 @@ func (a *ChatbotsAPI) Dashboard(ctx context.Context, chatbotID string) (JSON, er
 	return a.c.Request(ctx, http.MethodGet, "/api/v2/chatbots/"+pathParam(chatbotID)+"/dashboard", nil, nil)
 }
 
+// Analytics returns the chatbot's daily engagement series with totals
+// and a prior-period comparison: widget opens, messages, reactions,
+// conversations started, unique visitors, escalations, and leads.
+// query may carry "startDay" and "endDay" (YYYY-MM-DD, UTC); the API
+// defaults to the trailing 30 days. Accounts without the analytics
+// entitlement get a 403 *Error with code ANALYTICS_LOCKED; the
+// insight-derived counters appear only when insights is enabled.
+func (a *ChatbotsAPI) Analytics(ctx context.Context, chatbotID string, query url.Values) (JSON, error) {
+	return a.c.Request(ctx, http.MethodGet, "/api/v2/chatbots/"+pathParam(chatbotID)+"/analytics", query, nil)
+}
+
 // KnowledgeAPI manages a chatbot's training content.
 type KnowledgeAPI struct{ c *Client }
 
