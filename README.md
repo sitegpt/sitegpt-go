@@ -44,7 +44,8 @@ without an account, use the anonymous onboarding flow documented at
 
 ## Surface
 
-Namespaces mirror the other SDKs: `Chatbots`, `Knowledge`,
+Namespaces mirror the other SDKs: `Chatbots` (including
+`Chatbots.Analytics` for the daily engagement series), `Knowledge`,
 `Conversations`, `Leads`, `Messages`, `Onboarding`, plus `Me`,
 `Health`, and a generic `Request` escape hatch. Everything the helpers
 do not cover is one `Request` call away — the contract is the OpenAPI
