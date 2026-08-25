@@ -183,3 +183,18 @@ func TestNonObjectErrorDetailsSurvive(t *testing.T) {
 		t.Errorf("array details lost: %+v", apiErr.Details)
 	}
 }
+
+func TestUnfollowedRedirectsAreErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	}))
+	defer server.Close()
+	client := NewClient("t", WithBaseURL(server.URL), WithHTTPClient(&http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}))
+	_, err := client.Me(context.Background())
+	apiErr, ok := err.(*Error)
+	if !ok || apiErr.Status != http.StatusFound {
+		t.Fatalf("expected *Error with 302, got %v", err)
+	}
+}

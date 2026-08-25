@@ -174,16 +174,22 @@ func (c *Client) Request(ctx context.Context, method, path string, query url.Val
 	if err != nil {
 		return nil, fmt.Errorf("sitegpt: reading response: %w", err)
 	}
+	// The documented contract is non-2xx => *Error, and the
+	// implementation must match it exactly (Codex round 6): with a
+	// WithHTTPClient that does not follow redirects
+	// (http.ErrUseLastResponse), a 3xx would otherwise return JSON, nil
+	// for an uncompleted call.
+	success := response.StatusCode >= 200 && response.StatusCode <= 299
 	var decoded JSON
 	if len(payload) > 0 {
 		if err := json.Unmarshal(payload, &decoded); err != nil {
-			if response.StatusCode >= 400 {
+			if !success {
 				return nil, &Error{Status: response.StatusCode, Code: "HTTP_ERROR", Message: http.StatusText(response.StatusCode)}
 			}
 			return nil, fmt.Errorf("sitegpt: response is not JSON (HTTP %d)", response.StatusCode)
 		}
 	}
-	if response.StatusCode >= 400 {
+	if !success {
 		apiError := &Error{Status: response.StatusCode, Code: "HTTP_ERROR", Message: http.StatusText(response.StatusCode)}
 		if errorNode, ok := decoded["error"].(map[string]any); ok {
 			if code, ok := errorNode["code"].(string); ok {
