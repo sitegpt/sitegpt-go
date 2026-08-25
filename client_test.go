@@ -55,7 +55,8 @@ func TestErrorsCarryCodeAndHint(t *testing.T) {
 	if apiErr.Code != "CHATBOT_NOT_FOUND" || apiErr.Status != 404 || apiErr.Hint == "" {
 		t.Errorf("unexpected error: %+v", apiErr)
 	}
-	if apiErr.Details["chatbotId"] != "missing" {
+	detailsObject, ok := apiErr.Details.(map[string]any)
+	if !ok || detailsObject["chatbotId"] != "missing" {
 		t.Errorf("details not decoded: %+v", apiErr.Details)
 	}
 }
@@ -161,5 +162,24 @@ func TestRelativePathsFailLocally(t *testing.T) {
 	}
 	if called {
 		t.Fatal("relative paths must never reach the network")
+	}
+}
+
+func TestNonObjectErrorDetailsSurvive(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": map[string]any{"code": "VALIDATION_FAILED", "message": "bad", "details": []any{"urls[0] is not a URL"}},
+		})
+	})
+	_, err := client.Chatbots.Get(context.Background(), "x")
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("error type = %T", err)
+	}
+	list, ok := apiErr.Details.([]any)
+	if !ok || len(list) != 1 {
+		t.Errorf("array details lost: %+v", apiErr.Details)
 	}
 }
