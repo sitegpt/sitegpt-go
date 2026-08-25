@@ -88,3 +88,38 @@ func TestPathParamsAreEscaped(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 }
+
+func TestEmptyTokenSendsNoAuthHeader(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if _, present := r.Header["Authorization"]; present {
+			t.Errorf("Authorization header must be absent, got %q", r.Header.Get("Authorization"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	})
+	client.token = ""
+	if _, err := client.Health(context.Background()); err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+}
+
+func TestRedirectAcrossOriginsDropsAuth(t *testing.T) {
+	var sawAuth string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Different port = different origin, same 127.0.0.1 host base —
+		// exactly the case Go's default redirect policy keeps auth for.
+		http.Redirect(w, r, target.URL+"/api/v2/me", http.StatusFound)
+	}))
+	defer source.Close()
+	client := NewClient("secret-token", WithBaseURL(source.URL))
+	if _, err := client.Me(context.Background()); err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if sawAuth != "" {
+		t.Errorf("token leaked across origins: %q", sawAuth)
+	}
+}

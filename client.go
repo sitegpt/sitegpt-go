@@ -79,9 +79,16 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // guarantee the Python SDK implements by hand).
 func NewClient(token string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    DefaultBaseURL,
-		token:      token,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		baseURL: DefaultBaseURL,
+		token:   token,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+			// Go's default only strips Authorization when the redirect
+			// leaves the domain (subdomains and port changes keep it) —
+			// Codex round 1: enforce the documented guarantee exactly:
+			// any scheme/host/port change drops the header.
+			CheckRedirect: stripAuthOnOriginChange,
+		},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -115,7 +122,13 @@ func (c *Client) Request(ctx context.Context, method, path string, query url.Val
 	if err != nil {
 		return nil, fmt.Errorf("sitegpt: building request: %w", err)
 	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
+	// No header at all when the token is empty (Codex round 1): the
+	// account-less flows (Onboarding.Start, Health) are anonymous, and
+	// "Bearer " with no credential is malformed — auth middleware can
+	// reject it before the public handler runs.
+	if c.token != "" {
+		request.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", "sitegpt-go/"+SDKVersion)
 	if body != nil {
@@ -155,6 +168,20 @@ func (c *Client) Request(ctx context.Context, method, path string, query url.Val
 		return nil, apiError
 	}
 	return decoded, nil
+}
+
+// stripAuthOnOriginChange removes the Authorization header whenever a
+// redirect changes scheme, host, or port. Applied to the DEFAULT
+// client only: WithHTTPClient callers own their redirect policy.
+func stripAuthOnOriginChange(request *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("sitegpt: stopped after 10 redirects")
+	}
+	origin := via[0].URL
+	if request.URL.Scheme != origin.Scheme || request.URL.Host != origin.Host {
+		request.Header.Del("Authorization")
+	}
+	return nil
 }
 
 // requireConfirmation guards destructive helpers: the API requires
