@@ -72,8 +72,30 @@ func WithBaseURL(baseURL string) Option {
 }
 
 // WithHTTPClient replaces the default *http.Client (10s timeout).
+// The cross-origin auth-stripping guarantee survives the swap (Codex
+// round 7: most callers only want a timeout and must not silently
+// lose it): the client is shallow-copied and its redirect hook is
+// wrapped — stripping runs first, then the caller's own CheckRedirect
+// (or Go's default 10-redirect limit) decides whether to follow.
 func WithHTTPClient(httpClient *http.Client) Option {
-	return func(c *Client) { c.httpClient = httpClient }
+	return func(c *Client) {
+		wrapped := *httpClient
+		callerCheck := httpClient.CheckRedirect
+		wrapped.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+			origin := via[0].URL
+			if request.URL.Scheme != origin.Scheme || request.URL.Host != origin.Host {
+				request.Header.Del("Authorization")
+			}
+			if callerCheck != nil {
+				return callerCheck(request, via)
+			}
+			if len(via) >= 10 {
+				return fmt.Errorf("sitegpt: stopped after 10 redirects")
+			}
+			return nil
+		}
+		c.httpClient = &wrapped
+	}
 }
 
 // NewClient builds a client from a SiteGPT API token (create one on
@@ -211,8 +233,9 @@ func (c *Client) Request(ctx context.Context, method, path string, query url.Val
 }
 
 // stripAuthOnOriginChange removes the Authorization header whenever a
-// redirect changes scheme, host, or port. Applied to the DEFAULT
-// client only: WithHTTPClient callers own their redirect policy.
+// redirect changes scheme, host, or port. The same stripping wraps any
+// client passed through WithHTTPClient, so the guarantee holds on
+// every constructor path.
 func stripAuthOnOriginChange(request *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("sitegpt: stopped after 10 redirects")

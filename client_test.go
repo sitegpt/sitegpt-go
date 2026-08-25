@@ -198,3 +198,24 @@ func TestUnfollowedRedirectsAreErrors(t *testing.T) {
 		t.Fatalf("expected *Error with 302, got %v", err)
 	}
 }
+
+func TestCustomClientKeepsAuthStripping(t *testing.T) {
+	var sawAuth string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/api/v2/me", http.StatusFound)
+	}))
+	defer source.Close()
+	// The common case: a caller swapping the client ONLY for a timeout.
+	client := NewClient("secret", WithBaseURL(source.URL), WithHTTPClient(&http.Client{}))
+	if _, err := client.Me(context.Background()); err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if sawAuth != "" {
+		t.Errorf("custom client leaked token across origins: %q", sawAuth)
+	}
+}
