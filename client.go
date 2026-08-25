@@ -30,7 +30,12 @@ type Error struct {
 	Status  int
 	Code    string
 	Message string
-	Hint    string
+	// Hint is a human-readable next step. The server implementation
+	// sends it even though the OpenAPI schema omits it.
+	Hint string
+	// Details is the schema-documented structured error context
+	// (validation field errors and similar); nil when absent.
+	Details map[string]any
 }
 
 func (e *Error) Error() string {
@@ -188,6 +193,9 @@ func (c *Client) Request(ctx context.Context, method, path string, query url.Val
 			}
 			if hint, ok := errorNode["hint"].(string); ok {
 				apiError.Hint = hint
+			}
+			if details, ok := errorNode["details"].(map[string]any); ok {
+				apiError.Details = details
 			}
 		}
 		return nil, apiError

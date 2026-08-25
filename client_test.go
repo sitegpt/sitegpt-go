@@ -38,8 +38,13 @@ func TestErrorsCarryCodeAndHint(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":    false,
-			"error": map[string]any{"code": "CHATBOT_NOT_FOUND", "message": "No such chatbot", "hint": "List chatbots first."},
+			"ok": false,
+			"error": map[string]any{
+				"code":    "CHATBOT_NOT_FOUND",
+				"message": "No such chatbot",
+				"hint":    "List chatbots first.",
+				"details": map[string]any{"chatbotId": "missing"},
+			},
 		})
 	})
 	_, err := client.Chatbots.Get(context.Background(), "missing")
@@ -49,6 +54,9 @@ func TestErrorsCarryCodeAndHint(t *testing.T) {
 	}
 	if apiErr.Code != "CHATBOT_NOT_FOUND" || apiErr.Status != 404 || apiErr.Hint == "" {
 		t.Errorf("unexpected error: %+v", apiErr)
+	}
+	if apiErr.Details["chatbotId"] != "missing" {
+		t.Errorf("details not decoded: %+v", apiErr.Details)
 	}
 }
 
