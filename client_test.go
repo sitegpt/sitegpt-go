@@ -140,3 +140,18 @@ func TestDotAndEmptyPathSegmentsFailLocally(t *testing.T) {
 		t.Fatal("rejected paths must never reach the network")
 	}
 }
+
+func TestRelativePathsFailLocally(t *testing.T) {
+	called := false
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+	_, err := client.Request(context.Background(), http.MethodGet, "api/v2/me", nil, nil)
+	apiErr, ok := err.(*Error)
+	if !ok || apiErr.Code != "INVALID_PATH" {
+		t.Fatalf("expected INVALID_PATH, got %v", err)
+	}
+	if called {
+		t.Fatal("relative paths must never reach the network")
+	}
+}

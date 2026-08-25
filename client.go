@@ -106,6 +106,17 @@ func NewClient(token string, opts ...Option) *Client {
 // be nil; body may be nil and is JSON-encoded otherwise. Non-2xx
 // responses return *Error.
 func (c *Client) Request(ctx context.Context, method, path string, query url.Values, body any) (JSON, error) {
+	// Absolute path only (Codex round 3): "api/v2/me" without the
+	// leading slash would concatenate into "https://sitegpt.aiapi/..."
+	// — authenticated traffic to a stranger's host on a typo.
+	if !strings.HasPrefix(path, "/") {
+		return nil, &Error{
+			Status:  0,
+			Code:    "INVALID_PATH",
+			Message: "path must start with '/'",
+			Hint:    "Pass API paths like \"/api/v2/me\".",
+		}
+	}
 	// One choke point for path hygiene (Codex round 2): url.PathEscape
 	// leaves "", "." and ".." unescaped, so a hostile or buggy ID could
 	// collapse the URL toward a parent route — the risky case being a
