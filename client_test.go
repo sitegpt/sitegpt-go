@@ -123,3 +123,20 @@ func TestRedirectAcrossOriginsDropsAuth(t *testing.T) {
 		t.Errorf("token leaked across origins: %q", sawAuth)
 	}
 }
+
+func TestDotAndEmptyPathSegmentsFailLocally(t *testing.T) {
+	called := false
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+	for _, badID := range []string{"..", ".", ""} {
+		_, err := client.Chatbots.Delete(context.Background(), badID, true)
+		apiErr, ok := err.(*Error)
+		if !ok || apiErr.Code != "INVALID_PATH_PARAM" {
+			t.Fatalf("id %q: expected INVALID_PATH_PARAM, got %v", badID, err)
+		}
+	}
+	if called {
+		t.Fatal("rejected paths must never reach the network")
+	}
+}

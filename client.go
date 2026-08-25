@@ -106,6 +106,20 @@ func NewClient(token string, opts ...Option) *Client {
 // be nil; body may be nil and is JSON-encoded otherwise. Non-2xx
 // responses return *Error.
 func (c *Client) Request(ctx context.Context, method, path string, query url.Values, body any) (JSON, error) {
+	// One choke point for path hygiene (Codex round 2): url.PathEscape
+	// leaves "", "." and ".." unescaped, so a hostile or buggy ID could
+	// collapse the URL toward a parent route — the risky case being a
+	// confirmed nested delete with an ID of "..". Reject locally.
+	for _, segment := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return nil, &Error{
+				Status:  0,
+				Code:    "INVALID_PATH_PARAM",
+				Message: "path contains an empty or dot segment",
+				Hint:    "IDs must be non-empty and must not be '.' or '..'.",
+			}
+		}
+	}
 	target := c.baseURL + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
