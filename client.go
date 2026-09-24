@@ -23,7 +23,7 @@ import (
 const DefaultBaseURL = "https://sitegpt.ai"
 
 // SDKVersion is reported in the User-Agent header.
-const SDKVersion = "0.3.0"
+const SDKVersion = "0.4.0"
 
 // Error is a structured SiteGPT API error.
 type Error struct {
