@@ -321,6 +321,88 @@ func TestEscalateSendsABodyWhenInputIsNil(t *testing.T) {
 	}
 }
 
+func TestNewDestructiveHelpersRequireConfirmation(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("refused call reached the network: %s", r.URL.Path)
+	})
+	ctx := context.Background()
+	calls := []struct {
+		name string
+		run  func() (JSON, error)
+	}{
+		{"DeleteDocument", func() (JSON, error) { return client.Knowledge.DeleteDocument(ctx, "b", "d", false) }},
+		{"DeleteDocuments", func() (JSON, error) { return client.Knowledge.DeleteDocuments(ctx, "b", nil, false) }},
+		{"RevokeSource", func() (JSON, error) { return client.Knowledge.RevokeSource(ctx, "b", "s", false) }},
+	}
+	for _, call := range calls {
+		_, err := call.run()
+		apiErr, ok := err.(*Error)
+		if !ok || apiErr.Code != "CONFIRMATION_REQUIRED" {
+			t.Errorf("%s: expected CONFIRMATION_REQUIRED, got %v", call.name, err)
+		}
+	}
+}
+
+func TestDeleteDocumentsSendsConfirmAndBody(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q", r.Method)
+		}
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/documents/delete" {
+			t.Errorf("path = %q", got)
+		}
+		if got := r.URL.Query().Get("confirm"); got != "true" {
+			t.Errorf("confirm query = %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		ids, _ := body["documentIds"].([]any)
+		if len(ids) != 2 {
+			t.Errorf("documentIds = %v", body["documentIds"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	input := JSON{"documentIds": []string{"d-1", "d-2"}}
+	if _, err := client.Knowledge.DeleteDocuments(context.Background(), "bot-1", input, true); err != nil {
+		t.Fatalf("DeleteDocuments: %v", err)
+	}
+}
+
+func TestMessageUpdatePatchesTheDeepPath(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("method = %q", r.Method)
+		}
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/conversations/t-9/messages/m-3" {
+			t.Errorf("path = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	input := JSON{"content": "corrected answer"}
+	if _, err := client.Messages.Update(context.Background(), "bot-1", "t-9", "m-3", input); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+}
+
+func TestDocumentStatsForwardsFilters(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/documents/stats" {
+			t.Errorf("path = %q", got)
+		}
+		if got := r.URL.Query().Get("status"); got != "FAILED" {
+			t.Errorf("status = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	query := url.Values{}
+	query.Set("status", "FAILED")
+	if _, err := client.Knowledge.DocumentStats(context.Background(), "bot-1", query); err != nil {
+		t.Fatalf("DocumentStats: %v", err)
+	}
+}
+
 func TestAnalyticsLockedSurfacesTheCode(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

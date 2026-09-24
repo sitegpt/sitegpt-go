@@ -44,12 +44,12 @@ without an account, use the anonymous onboarding flow documented at
 
 ## Surface
 
-Namespaces mirror the other SDKs: `Chatbots` (including
-`Chatbots.Analytics` for the daily engagement series), `Knowledge`,
-`Conversations` (including `TakeOver` and `SwitchToAI` for the
-human-handover lifecycle), `Leads`, `Messages`, `Onboarding`, plus `Me`,
-`Health`, and a generic `Request` escape hatch. Everything the helpers
-do not cover is one `Request` call away — the contract is the OpenAPI
+Namespaces have full helper parity with the Python and TypeScript
+SDKs: `Chatbots` (including `Analytics`), `Knowledge` (documents,
+sources, ingest jobs), `Conversations` (including `TakeOver` and
+`SwitchToAI` for the human-handover lifecycle), `Leads`, `Messages`,
+`Onboarding`, plus `Me`, `Health`, and a generic `Request` escape
+hatch for anything the API adds next — the contract is the OpenAPI
 document at
 [sitegpt.ai/api/v2/openapi.json](https://sitegpt.ai/api/v2/openapi.json)
 (markdown description: [openapi.json.md](https://sitegpt.ai/api/v2/openapi.json.md)).
