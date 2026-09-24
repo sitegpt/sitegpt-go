@@ -7,6 +7,16 @@ import (
 )
 
 // confirmQuery is the query the API requires on destructive calls.
+// orEmpty maps a nil input to an empty object. The escalate,
+// take-over, and switch-to-ai routes require a JSON body even when
+// every field is optional; a nil JSON must mean "{}", not "no body".
+func orEmpty(input JSON) JSON {
+	if input == nil {
+		return JSON{}
+	}
+	return input
+}
+
 func confirmQuery() url.Values {
 	q := url.Values{}
 	q.Set("confirm", "true")
@@ -126,7 +136,20 @@ func (a *ConversationsAPI) Delete(ctx context.Context, chatbotID, threadID strin
 
 // Escalate hands the conversation to a human agent.
 func (a *ConversationsAPI) Escalate(ctx context.Context, chatbotID, threadID string, input JSON) (JSON, error) {
-	return a.c.Request(ctx, http.MethodPost, "/api/v2/chatbots/"+pathParam(chatbotID)+"/conversations/"+pathParam(threadID)+"/escalate", nil, input)
+	return a.c.Request(ctx, http.MethodPost, "/api/v2/chatbots/"+pathParam(chatbotID)+"/conversations/"+pathParam(threadID)+"/escalate", nil, orEmpty(input))
+}
+
+// TakeOver takes over a conversation as a human agent: it sets the
+// take-over lock, stops a streaming answer, and posts the
+// visitor-visible join notice. input may carry an optional "message".
+func (a *ConversationsAPI) TakeOver(ctx context.Context, chatbotID, threadID string, input JSON) (JSON, error) {
+	return a.c.Request(ctx, http.MethodPost, "/api/v2/chatbots/"+pathParam(chatbotID)+"/conversations/"+pathParam(threadID)+"/take-over", nil, orEmpty(input))
+}
+
+// SwitchToAI hands an escalated conversation back to the AI. input
+// may carry an optional "message".
+func (a *ConversationsAPI) SwitchToAI(ctx context.Context, chatbotID, threadID string, input JSON) (JSON, error) {
+	return a.c.Request(ctx, http.MethodPost, "/api/v2/chatbots/"+pathParam(chatbotID)+"/conversations/"+pathParam(threadID)+"/switch-to-ai", nil, orEmpty(input))
 }
 
 // LeadsAPI reads and manages captured leads.

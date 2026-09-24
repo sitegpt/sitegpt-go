@@ -3,6 +3,7 @@ package sitegpt
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -262,6 +263,61 @@ func TestAnalyticsSendsRangeAndDecodesSeries(t *testing.T) {
 	totals, ok := analytics["totals"].(map[string]any)
 	if !ok || totals["widgetOpens"] != float64(42) {
 		t.Errorf("totals not decoded: %+v", analytics["totals"])
+	}
+}
+
+func TestTakeOverPostsEmptyObjectWhenInputIsNil(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q", r.Method)
+		}
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/conversations/t-9/take-over" {
+			t.Errorf("path = %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != "{}" {
+			t.Errorf("body = %q, want {}", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	if _, err := client.Conversations.TakeOver(context.Background(), "bot-1", "t-9", nil); err != nil {
+		t.Fatalf("TakeOver: %v", err)
+	}
+}
+
+func TestSwitchToAICarriesTheMessage(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/v2/chatbots/bot-1/conversations/t-9/switch-to-ai" {
+			t.Errorf("path = %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding body: %v", err)
+		}
+		if body["message"] != "back to the bot" {
+			t.Errorf("message = %v", body["message"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	input := JSON{"message": "back to the bot"}
+	if _, err := client.Conversations.SwitchToAI(context.Background(), "bot-1", "t-9", input); err != nil {
+		t.Fatalf("SwitchToAI: %v", err)
+	}
+}
+
+func TestEscalateSendsABodyWhenInputIsNil(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != "{}" {
+			t.Errorf("body = %q, want {}", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]any{}})
+	})
+	if _, err := client.Conversations.Escalate(context.Background(), "bot-1", "t-9", nil); err != nil {
+		t.Fatalf("Escalate: %v", err)
 	}
 }
 
